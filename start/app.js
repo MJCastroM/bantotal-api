@@ -1,5 +1,13 @@
 'use strict'
 
+const { MongoClient } = require("mongodb");
+// Replace the uri string with your connection string.
+const uri = "mongodb+srv://marcoscastro0827:30Iq20vHTSLG4Ypc@cluster0.fberodi.mongodb.net/?appName=Cluster0";
+const client = new MongoClient(uri);
+
+// Definir la variable global
+global.client = client;
+
 /*
 |--------------------------------------------------------------------------
 | Providers
@@ -56,4 +64,4 @@ const aliases = {}
 */
 const commands = []
 
-module.exports = { providers, aceProviders, aliases, commands }
+module.exports = { providers, aceProviders, aliases, commands, client }

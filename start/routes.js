@@ -43,6 +43,11 @@ Route.group(() => {
   // Routes for Paises
   Route.resource('paises', 'PaisController').apiOnly();
 
+  // Routes for Programas
+  Route.resource('Programas', 'ProgramaController').apiOnly()
+  // Routes for Tablas
+  Route.resource('Tablas', 'TablaController').apiOnly()
+
 
 
   // Route.post('categorias', 'CategoryController.store').middleware(['auth:jwt']);

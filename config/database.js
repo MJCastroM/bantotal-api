@@ -8,26 +8,30 @@ const Helpers = use('Helpers')
 
 module.exports = {
   /*
-  |--------------------------------------------------------------------------
-  | Default Connection
-  |--------------------------------------------------------------------------
-  |
-  | Connection defines the default connection settings to be used while
-  | interacting with SQL databases.
-  |
+  |--------------------------------------------------------------------------  
+  | Default Connection  
+  |--------------------------------------------------------------------------  
+  |  
+  | Aquí se define la conexión por defecto que se utilizará al interactuar  
+  | con las bases de datos.  
+  |  
   */
-  connection: Env.get('DB_CONNECTION', 'sqlite'),
+  connection: Env.get('DB_CONNECTION', 'mssql'),
+
+  
+  mongodb: {
+    uri: Env.get('MONGO_URI', 'mongodb://localhost:27017/tu_basededatos'),
+    client: 'mssql',
+    options: {
+      useNewUrlParser: true,
+      useUnifiedTopology: true
+    }
+  },
 
   /*
-  |--------------------------------------------------------------------------
-  | Sqlite
-  |--------------------------------------------------------------------------
-  |
-  | Sqlite is a flat file database and can be a good choice for a development
-  | environment.
-  |
-  | npm i --save sqlite3
-  |
+  |--------------------------------------------------------------------------  
+  | Sqlite  
+  |--------------------------------------------------------------------------  
   */
   sqlite: {
     client: 'sqlite3',
@@ -39,14 +43,9 @@ module.exports = {
   },
 
   /*
-  |--------------------------------------------------------------------------
-  | MySQL
-  |--------------------------------------------------------------------------
-  |
-  | Here we define connection settings for MySQL database.
-  |
-  | npm i --save mysql
-  |
+  |--------------------------------------------------------------------------  
+  | MySQL  
+  |--------------------------------------------------------------------------  
   */
   mysql: {
     client: 'mysql',
@@ -61,14 +60,9 @@ module.exports = {
   },
 
   /*
-  |--------------------------------------------------------------------------
-  | PostgreSQL
-  |--------------------------------------------------------------------------
-  |
-  | Here we define connection settings for PostgreSQL database.
-  |
-  | npm i --save pg
-  |
+  |--------------------------------------------------------------------------  
+  | PostgreSQL  
+  |--------------------------------------------------------------------------  
   */
   pg: {
     client: 'pg',
@@ -78,6 +72,29 @@ module.exports = {
       user: Env.get('DB_USER', 'root'),
       password: Env.get('DB_PASSWORD', ''),
       database: Env.get('DB_DATABASE', 'adonis')
+    },
+    debug: Env.get('DB_DEBUG', false)
+  },
+
+  /*
+  |--------------------------------------------------------------------------  
+  | SQL Server  
+  |--------------------------------------------------------------------------  
+  */
+  mssql: {
+    client: 'mssql',
+    connection: {
+      host: Env.get('DB_HOST', 'localhost'),
+      port: Number(Env.get('DB_PORT', '1433')),
+      user: Env.get('DB_USER', 'sa'),
+      password: Env.get('DB_PASSWORD', ''),
+      database: Env.get('DB_DATABASE', 'adonis'),
+      options: {
+        // Si se requiere conexión encriptada, esta opción se activa según la variable de entorno
+        encrypt: Env.get('DB_ENCRYPT', false),
+        // Para servidores con certificados autofirmados
+        trustServerCertificate: Env.get('DB_TRUST_CERT', false)
+      }
     },
     debug: Env.get('DB_DEBUG', false)
   }
