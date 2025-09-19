@@ -47,6 +47,7 @@ Route.group(() => {
   Route.resource('Programas', 'ProgramaController').apiOnly()
   // Routes for Tablas
   Route.resource('Tablas', 'TablaController').apiOnly()
+  Route.resource('Tablas', 'AtributoController').apiOnly()
 
 
 

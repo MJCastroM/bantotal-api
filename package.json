@@ -4,10 +4,9 @@
   "adonis-version": "4.1.0",
   "description": "Adonisjs boilerplate for API server with pre-configured JWT",
   "main": "index.js",
-  "scripts": {    
-    "build": "node ace build --production --ignore-ts-errors",
-    "start": "node ace serve --host 0.0.0.0 --port ${PORT}",
-    "dev":   "node ace serve --watch --host 0.0.0.0 --port ${PORT}"
+  "scripts": {
+    "start": "node server.js",
+    "test": "node ace test"
   },
   "keywords": [
     "adonisjs",
