@@ -3,63 +3,17 @@
 /**
  * @swagger
  * tags:
- *   name: Atributos
+ *   name: Sistemas
  *   description: API para la gestión de Atributos
  */
 
 const Env = use('Env')
 const connection = Env.get('DB_CONNECTION', 'mssql')
 
-// Renombrado para evitar sombras
-const AtributoModel = use('App/Models/Atributo')
-
-// === Mongo helpers ===
-const { MongoClient, ObjectId } = require('mongodb')
-const MONGO_URI         = Env.get('MONGO_URI') || 'mongodb://localhost:27017'
-const MONGO_DB_NAME     = Env.get('MONGO_DB', 'marcos')
-const MONGO_COLLECTION  = Env.get('MONGO_COLLECTION', 'Atributos')
-
-// Cliente Mongo singleton (reutiliza conexiones)
-let __mongoClient = null
-async function getMongo() {
-  if (!__mongoClient) {
-    __mongoClient = new MongoClient(MONGO_URI, { maxPoolSize: 10 })
-    await __mongoClient.connect()
-  } else if (!__mongoClient.topology || __mongoClient.topology.isClosed()) {
-    // reconectar si se cerró
-    await __mongoClient.connect()
-  }
-  const db = __mongoClient.db(MONGO_DB_NAME)
-  const col = db.collection(MONGO_COLLECTION)
-  return { client: __mongoClient, db, col }
-}
-
-// Whitelists
-const ALLOWED_SORT_FIELDS = new Set(['_id', 'codigo', 'descripcion'])
-// Nota: ampliá esta lista si querés filtrar por más campos vía `search`
-const ALLOWED_FILTER_FIELDS = new Set(['codigo', 'descripcion'])
-
-// Sanitiza el filtro recibido para evitar abusos
-function sanitizeFilter(obj) {
-  if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return {}
-  const out = {}
-  for (const [k, v] of Object.entries(obj)) {
-    if (!ALLOWED_FILTER_FIELDS.has(k)) continue
-    if (v == null) continue
-    // Permitimos string/number/bool; si viene "/texto/i" lo interpretamos como regex
-    if (typeof v === 'string') {
-      const m = v.match(/^\/(.+)\/(i)?$/)
-      if (m) {
-        out[k] = { $regex: m[1], $options: m[2] || '' }
-      } else {
-        out[k] = v
-      }
-    } else if (['number', 'boolean'].includes(typeof v)) {
-      out[k] = v
-    }
-  }
-  return out
-}
+const Atributo = use('App/Models/Atributo')
+const { MongoClient } = require("mongodb")
+// Declaramos la URI de MongoDB para reutilizarla en los endpoints Mongo
+const MONGO_URI = "mongodb+srv://marcoscastro0827:30Iq20vHTSLG4Ypc@cluster0.fberodi.mongodb.net/?appName=Cluster0";
 
 class AtributoController {
   /**
@@ -81,17 +35,17 @@ class AtributoController {
    *         type: integer
    *       - name: search
    *         in: query
-   *         description: JSON de filtro. Ej: {"descripcion":"/foo/i"}
+   *         description: Término de búsqueda
    *         required: false
    *         type: string
    *       - name: sortBy
    *         in: query
-   *         description: Campo por el cual ordenar (permitidos: _id,codigo,descripcion)
+   *         description: Campo por el cual ordenar
    *         required: false
    *         type: string
    *       - name: order
    *         in: query
-   *         description: Orden (asc o desc)
+   *         description: Orden (ascendente o descendente)
    *         required: false
    *         type: string
    *         enum: [asc, desc]
@@ -101,57 +55,75 @@ class AtributoController {
    */
   async index({ request, response }) {
     if (connection === 'mongodb') {
+      const client = new MongoClient(MONGO_URI);
       try {
-        const { col } = await getMongo()
+        await client.connect();
+        const database = client.db('marcos');
+        const Atributos = database.collection('atributos');
 
-        // Paginación/orden
-        const page   = parseInt(request.input('page', 1), 10)
-        const limit  = Math.max(parseInt(request.input('limit', 10), 10), 1)
-        const skip   = (page - 1) * limit
+       // Parámetros de paginación y ordenación
+      const page = parseInt(request.input('page', 1));
+      const limit = parseInt(request.input('limit', 10));
+      const sortBy = request.input('sortBy', 'id');
+      const order = request.input('order', 'asc');
+      const skip = (page - 1) * limit;
+      const sort = { [sortBy]: order === 'asc' ? 1 : -1 };
 
-        let sortBy   = request.input('sortBy', '_id')
-        if (!ALLOWED_SORT_FIELDS.has(sortBy)) sortBy = '_id'
-        const order  = request.input('order', 'asc') === 'desc' ? -1 : 1
-        const sort   = { [sortBy]: order }
-
-        // Filtro (JSON)
-        const rawSearch = request.input('search', '{}')
-        let filterParsed = {}
-        try {
-          filterParsed = JSON.parse(rawSearch)
-        } catch (e) {
-          // Si no es JSON válido, filtro vacío (no 400 para ser más tolerante)
-          filterParsed = {}
+      // Obtener el parámetro "search" esperando un JSON válido.
+      const rawSearch = request.input('search', '{}'); // Por defecto un objeto vacío
+      let filter = {};
+      try {
+        filter = JSON.parse(rawSearch);
+        if (typeof filter !== 'object' || filter === null) {
+          // Si el parseo resulta en algo que no sea un objeto, usamos un filtro vacío
+          filter = {};
         }
-        const filter = sanitizeFilter(filterParsed)
+      } catch (e) {
+        // Si no se puede parsear, podemos optar por retornar un error o usar filtro vacío.
+        console.error("Error parsing 'search' filter, debe ser un JSON válido:", e);
+        // Para retornar error:
+        // return response.status(400).json({ error: 'El parámetro search debe ser un JSON válido' });
+        // O, alternativamente, usar un filtro vacío:
+        filter = {};
+      }
 
-        const total  = await col.countDocuments(filter)
-        const cursor = col.find(filter).sort(sort).skip(skip).limit(limit)
-        const data   = await cursor.toArray()
-        const totalPages = Math.ceil(total / limit) || 1
+      // Realizar la consulta usando el filtro recibido
+      const total = await Atributos.countDocuments(filter);
+      const cursor = Atributos.find(filter)
+                              .sort(sort)
+                              .skip(skip)
+                              .limit(limit);
+        const AtributosRes = await cursor.toArray();
+        const totalPages = Math.ceil(total / limit);
 
-        return response.json({ data, meta: { total, page, limit, totalPages } })
+        return response.json({
+          data: AtributosRes,
+          meta: { total, page, limit, totalPages }
+        });
       } catch (error) {
-        console.error(error)
-        return response.status(500).json({ error: 'Error en la consulta a MongoDB' })
+        console.error(error);
+        return response.status(500).json({ error: 'Error en la consulta a MongoDB' });
+      } finally {
+        await client.close();
       }
     } else {
-      // SQL/ORM
-      const page  = request.input('page', 1)
-      const limit = request.input('limit', 10)
-      const search = request.input('search', '')
-      const sortBy = request.input('sortBy', 'id')
-      const order  = request.input('order', 'asc') === 'desc' ? 'desc' : 'asc'
+      // Lógica para conexión SQL/ORM
+      const page = request.input('page', 1);
+      const limit = request.input('limit', 10);
+      const search = request.input('search', '');
+      const sortBy = request.input('sortBy', 'id');
+      const order = request.input('order', 'asc');
 
-      let query = AtributoModel.query()
+      let query = Atributo.query();
+
       if (search) {
         query.where('nombre', 'LIKE', `%${search}%`)
-             .orWhere('campo', 'LIKE', `%${search}%`)
+             .orWhere('campo', 'LIKE', `%${search}%`);
       }
 
-      query.orderBy(sortBy, order)
-      const res = await query.paginate(page, limit)
-      return response.json(res)
+      query.orderBy(sortBy, order);
+      const AtributosRes = await query.paginate(page, limit);
+      return response.json(AtributosRes);
     }
   }
 
@@ -164,33 +136,32 @@ class AtributoController {
    *     parameters:
    *       - name: id
    *         in: path
-   *         description: ID del Atributo (Mongo: _id)
+   *         description: ID del Atributo
    *         required: true
-   *         type: string
+   *         type: integer
    *     responses:
    *       200:
    *         description: Datos del Atributo
    */
   async show({ params, response }) {
     if (connection === 'mongodb') {
+      const client = new MongoClient(MONGO_URI);
       try {
-        const { col } = await getMongo()
-
-        if (!ObjectId.isValid(params.id)) {
-          return response.status(400).json({ error: 'id inválido' })
-        }
-        const _id = new ObjectId(params.id)
-        const doc = await col.findOne({ _id })
-        if (!doc) return response.status(404).json({ error: 'No encontrado' })
-        return response.json(doc)
+        await client.connect();
+        const database = client.db('marcos');
+        const Atributos = database.collection('atributos');
+        // Se asume que los documentos tienen un campo "id" que coincide con params.id.
+        const Atributo = await Atributos.findOne({ id: params.id });
+        return response.json(Atributo);
       } catch (error) {
-        console.error(error)
-        return response.status(500).json({ error: 'Error en la consulta a MongoDB' })
+        console.error(error);
+        return response.status(500).json({ error: 'Error en la consulta a MongoDB' });
+      } finally {
+        await client.close();
       }
     } else {
-      const item = await AtributoModel.find(params.id)
-      if (!item) return response.status(404).json({ error: 'No encontrado' })
-      return response.json(item)
+      const Atributo = await Atributo.find(params.id);
+      return response.json(Atributo);
     }
   }
 
@@ -201,14 +172,14 @@ class AtributoController {
    *     summary: Crear un Atributo
    *     tags: [Atributos]
    *     parameters:
-   *       - name: codigo
-   *         in: query
-   *         description: Código del Atributo
-   *         required: true
-   *         type: string
    *       - name: descripcion
    *         in: query
    *         description: Descripción del Atributo
+   *         required: true
+   *         type: string
+   *       - name: codigo
+   *         in: query
+   *         description: Código del Atributo
    *         required: true
    *         type: string
    *     responses:
@@ -216,19 +187,25 @@ class AtributoController {
    *         description: Atributo creado
    */
   async store({ request, response }) {
-    const data = request.only(['codigo', 'descripcion'])
+    const data = request.only(['codigo', 'descripcion']);
     if (connection === 'mongodb') {
+      const client = new MongoClient(MONGO_URI);
       try {
-        const { col } = await getMongo()
-        const result = await col.insertOne(data)
-        return response.status(201).json({ _id: result.insertedId, ...data })
+        await client.connect();
+        const database = client.db('marcos');
+        const Atributos = database.collection('atributos');
+        const result = await Atributos.insertOne(data);
+        data._id = result.insertedId;
+        return response.status(201).json(data);
       } catch (error) {
-        console.error(error)
-        return response.status(500).json({ error: 'Error al insertar en MongoDB' })
+        console.error(error);
+        return response.status(500).json({ error: 'Error al insertar en MongoDB' });
+      } finally {
+        await client.close();
       }
     } else {
-      const item = await AtributoModel.create(data)
-      return response.status(201).json(item)
+      const Atributo = await Atributo.create(data);
+      return response.status(201).json(Atributo);
     }
   }
 
@@ -241,9 +218,9 @@ class AtributoController {
    *     parameters:
    *       - name: id
    *         in: path
-   *         description: ID del Atributo (Mongo: _id)
+   *         description: ID del Atributo
    *         required: true
-   *         type: string
+   *         type: integer
    *       - name: codigo
    *         in: query
    *         description: Código del Atributo
@@ -259,32 +236,31 @@ class AtributoController {
    *         description: Atributo actualizado
    */
   async update({ params, request, response }) {
-    const data = request.only(['codigo', 'descripcion'])
+    const data = request.only(['codigo', 'descripcion']);
     if (connection === 'mongodb') {
+      const client = new MongoClient(MONGO_URI);
       try {
-        const { col } = await getMongo()
-
-        if (!ObjectId.isValid(params.id)) {
-          return response.status(400).json({ error: 'id inválido' })
-        }
-        const _id = new ObjectId(params.id)
-        const result = await col.findOneAndUpdate(
-          { _id },
+        await client.connect();
+        const database = client.db('marcos');
+        const Atributos = database.collection('atributos');
+        // Se asume que los documentos tienen un campo "id" que coincide con params.id.
+        const result = await Atributos.findOneAndUpdate(
+          { id: params.id },
           { $set: data },
           { returnDocument: 'after' }
-        )
-        if (!result.value) return response.status(404).json({ error: 'No encontrado' })
-        return response.json(result.value)
+        );
+        return response.json(result.value);
       } catch (error) {
-        console.error(error)
-        return response.status(500).json({ error: 'Error al actualizar en MongoDB' })
+        console.error(error);
+        return response.status(500).json({ error: 'Error al actualizar en MongoDB' });
+      } finally {
+        await client.close();
       }
     } else {
-      const item = await AtributoModel.find(params.id)
-      if (!item) return response.status(404).json({ error: 'No encontrado' })
-      item.merge(data)
-      await item.save()
-      return response.json(item)
+      const Atributo = await Atributo.find(params.id);
+      Atributo.merge(data);
+      await Atributo.save();
+      return response.json(Atributo);
     }
   }
 
@@ -297,35 +273,34 @@ class AtributoController {
    *     parameters:
    *       - name: id
    *         in: path
-   *         description: ID del Atributo a eliminar (Mongo: _id)
+   *         description: ID del Atributo a eliminar
    *         required: true
-   *         type: string
+   *         type: integer
    *     responses:
    *       204:
    *         description: Atributo eliminado correctamente
    */
   async destroy({ params, response }) {
     if (connection === 'mongodb') {
+      const client = new MongoClient(MONGO_URI);
       try {
-        const { col } = await getMongo()
-        if (!ObjectId.isValid(params.id)) {
-          return response.status(400).json({ error: 'id inválido' })
-        }
-        const _id = new ObjectId(params.id)
-        const { deletedCount } = await col.deleteOne({ _id })
-        if (!deletedCount) return response.status(404).json({ error: 'No encontrado' })
-        return response.status(204).json(null)
+        await client.connect();
+        const database = client.db('marcos');
+        const Atributos = database.collection('atributos');
+        await Atributos.deleteOne({ id: params.id });
+        return response.status(204).json(null);
       } catch (error) {
-        console.error(error)
-        return response.status(500).json({ error: 'Error al eliminar en MongoDB' })
+        console.error(error);
+        return response.status(500).json({ error: 'Error al eliminar en MongoDB' });
+      } finally {
+        await client.close();
       }
     } else {
-      const item = await AtributoModel.find(params.id)
-      if (!item) return response.status(404).json({ error: 'No encontrado' })
-      await item.delete()
-      return response.status(204).json(null)
+      const Atributo = await Atributo.find(params.id);
+      await Atributo.delete();
+      return response.status(204).json(null);
     }
   }
 }
 
-module.exports = AtributoController
+module.exports = AtributoController;
